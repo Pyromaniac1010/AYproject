@@ -121,7 +121,7 @@ function exportToCsv(filename: string, rows: any[]) {
 
 // ===== GEMINI API HELPER =====
 const callGeminiAPI = async (prompt: string, schema?: object) => {
-    const apiKey = ""; // Leave empty
+    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY; // Replaced empty string with environment variable
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
     const payload: any = {
@@ -494,15 +494,15 @@ function HeatmapTab({ scatterData, heatMapView, setHeatMapView, priorityRiskCoun
                     )}
                     <ResponsiveContainer>
                         <ScatterChart margin={{ top: 20, right: 30, bottom: 80, left: 30 }}>
-                            <CustomHeatmapBackground size={config.matrixSize}/>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis type="number" dataKey="x" name="Likelihood" domain={[0, config.matrixSize]} ticks={Array.from({ length: config.matrixSize }, (_, i) => i + 0.5)} tickFormatter={(val, index) => config.likelihoodLabels[index]} angle={-45} textAnchor="end" height={100} interval={0} label={{ value: 'Likelihood →', position: 'insideBottom', dy: 30 }}/>
-                            <YAxis type="number" dataKey="y" name="Impact" domain={[0, config.matrixSize]} ticks={Array.from({ length: config.matrixSize }, (_, i) => i + 0.5)} tickFormatter={(val, index) => config.impactLabels[index]} interval={0} label={{ value: 'Impact →', position: 'insideLeft', angle: -90, dx: -20 }}/>
-                             <ZAxis type="number" range={[100, 100]}/>
-                            <Tooltip content={<CustomTooltip />} />
-                            <Legend verticalAlign="top" height={36}/>
-                            {heatMapView.inherent && <Scatter name="Inherent" data={centeredData.inherent} fill="#1e40af" shape="circle" />}
-                            {heatMapView.residual && <Scatter name="Residual" data={centeredData.residual} fill="#be123c" shape="diamond" />}
+                            <CustomHeatmapBackground size={config.matrixSize} />
+                            <CartesianGrid />
+                            <XAxis type="number" dataKey="x" name="Likelihood" domain={[1, config.matrixSize]} ticks={Array.from({ length: config.matrixSize }, (_, i) => i + 1)} allowDecimals={false} interval={0} tickFormatter={t => config.likelihoodLabels[t - 1]} tick={{ transform: "translate(0, 10)" }} />
+                            <YAxis type="number" dataKey="y" name="Impact" domain={[1, config.matrixSize]} ticks={Array.from({ length: config.matrixSize }, (_, i) => i + 1)} allowDecimals={false} interval={0} tickFormatter={t => config.impactLabels[t - 1]} />
+                            <ZAxis type="number" dataKey="score" range={[150, 400]} />
+                            <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
+                            <Legend verticalAlign="top" height={36} />
+                            {heatMapView.inherent && <Scatter name="Inherent" data={centeredData.inherent} fill="#8884d8" />}
+                            {heatMapView.residual && <Scatter name="Residual" data={centeredData.residual} fill="#82ca9d" />}
                         </ScatterChart>
                     </ResponsiveContainer>
                 </div>
@@ -511,402 +511,71 @@ function HeatmapTab({ scatterData, heatMapView, setHeatMapView, priorityRiskCoun
     );
 }
 
-
-function RiskImportTab({ onImport, currentConfig }: { onImport: (risks: ParsedRisk[], discovered: DiscoveredConfig) => void; currentConfig: AppConfig; }) {
-    const [parsedData, setParsedData] = useState<ParsedRisk[]>([]);
-    const [fileName, setFileName] = useState<string | null>(null);
-    const [discoveredConfig, setDiscoveredConfig] = useState<DiscoveredConfig | null>(null);
-
-    const onDrop = useCallback((acceptedFiles: File[]) => {
-        const file = acceptedFiles[0];
-        if (!file) return;
-        setFileName(file.name);
-        const processFile = () => Papa.parse(file, { header: true, skipEmptyLines: true, complete: (results: any) => { const { data, discovered } = processParsedRiskData(results.data, currentConfig.matrixSize); setParsedData(data); setDiscoveredConfig(discovered); } });
-        processFile();
-    }, [currentConfig.matrixSize]);
-
-    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] }, multiple: false });
-    const handleImport = () => { if (!discoveredConfig) return; const validRisks = parsedData.filter(r => !r.errors || r.errors.length === 0); onImport(validRisks, discoveredConfig); setParsedData([]); setFileName(null); setDiscoveredConfig(null); };
-    const validRows = useMemo(() => parsedData.filter(r => !r.errors || r.errors.length === 0), [parsedData]);
-    const invalidRowsCount = useMemo(() => parsedData.length - validRows.length, [parsedData, validRows]);
-    const newDiscoveries = useMemo(() => { if (!discoveredConfig) return null; const newDivisions = discoveredConfig.divisions.filter(d => !currentConfig.divisions.includes(d)); const newDepartments = discoveredConfig.departments.filter(d => !currentConfig.departments.includes(d)); const newCategories = discoveredConfig.categories.filter(c => !currentConfig.categories.includes(c)); const counts = [newDivisions.length > 0 ? `${newDivisions.length} new division(s)` : '', newDepartments.length > 0 ? `${newDepartments.length} new department(s)` : '', newCategories.length > 0 ? `${newCategories.length} new category(s)` : ''].filter(Boolean); return { counts, total: newDivisions.length + newDepartments.length + newCategories.length }; }, [discoveredConfig, currentConfig]);
-
-    return (<Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Import Risks from CSV</CardTitle></CardHeader><CardContent className="space-y-4"><div {...getRootProps()} className={`p-8 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}><input {...getInputProps()} /><FileUp className="mx-auto h-12 w-12 text-gray-400" /><p className="mt-2 text-sm text-gray-600">{isDragActive ? "Drop the file here ..." : "Drag 'n' drop a CSV file here, or click to select file"}</p><p className="text-xs text-gray-500">Required columns: risk_title, risk_description, division, department, category, owner, likelihood_inherent, impact_inherent, status</p></div>{fileName && <p className="text-sm font-medium">Previewing file: <span className="font-normal text-gray-700">{fileName}</span></p>}{parsedData.length > 0 && (<div className="space-y-4"><div className="overflow-auto rounded-xl border bg-white max-h-96"><table className="w-full text-sm"><thead className="bg-gray-100 sticky top-0"><tr>{["Title", "Category", "Owner", "L (Inh)", "I (Inh)", "Status", "Errors"].map(h => <th key={h} className="px-3 py-2 text-left font-semibold text-gray-700">{h}</th>)}</tr></thead><tbody>{parsedData.map((row, index) => (<tr key={index} className={`border-t ${row.errors && row.errors.length > 0 ? 'bg-red-50' : ''}`}><td className="px-3 py-2">{row.risk_title}</td><td className="px-3 py-2">{row.category}</td><td className="px-3 py-2">{row.owner}</td><td className="px-3 py-2">{isNaN(row.likelihood_inherent) ? '' : row.likelihood_inherent}</td><td className="px-3 py-2">{isNaN(row.impact_inherent) ? '' : row.impact_inherent}</td><td className="px-3 py-2">{row.status}</td><td className="px-3 py-2 text-red-600 text-xs">{row.errors?.join(', ')}</td></tr>))}</tbody></table></div><div className="flex justify-between items-center"><div className="text-sm text-gray-600 space-y-1">{invalidRowsCount > 0 ? <span className="text-red-600 font-semibold flex items-center"><AlertTriangle className="h-4 w-4 mr-2"/>{invalidRowsCount} row(s) have errors and will be skipped.</span> : <span className="text-green-600 font-semibold">All {parsedData.length} rows look good!</span>}{newDiscoveries && newDiscoveries.total > 0 && <span className="text-blue-600 font-semibold">Found {newDiscoveries.counts.join(', ')}. These will be added to your configuration.</span>}</div><Button onClick={handleImport} disabled={validRows.length === 0}>Import {validRows.length > 0 ? validRows.length : ''} Valid Risks</Button></div></div>)}</CardContent></Card>);
-}
-
-function ControlImportTab({ onImport, allRisks }: { onImport: (controls: ParsedControl[]) => void; allRisks: RiskRow[] }) {
-    const [parsedData, setParsedData] = useState<ParsedControl[]>([]);
-    const [fileName, setFileName] = useState<string | null>(null);
-
-    const onDrop = useCallback((acceptedFiles: File[]) => {
-        const file = acceptedFiles[0];
-        if (!file) return;
-        setFileName(file.name);
-        const processFile = () => Papa.parse(file, { header: true, skipEmptyLines: true, complete: (results: any) => { setParsedData(processParsedControlsData(results.data, allRisks)); } });
-        processFile();
-    }, [allRisks]);
-
-    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] }, multiple: false });
-    const handleImport = () => { const validControls = parsedData.filter(c => !c.errors || c.errors.length === 0); onImport(validControls); setParsedData([]); setFileName(null); };
-    const validRows = useMemo(() => parsedData.filter(c => !c.errors || c.errors.length === 0), [parsedData]);
-    const invalidRowsCount = useMemo(() => parsedData.length - validRows.length, [parsedData, validRows]);
-
-    return (<Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Import Controls from CSV</CardTitle></CardHeader><CardContent className="space-y-4"><div {...getRootProps()} className={`p-8 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}><input {...getInputProps()} /><FileUp className="mx-auto h-12 w-12 text-gray-400" /><p className="mt-2 text-sm text-gray-600">{isDragActive ? "Drop the file here ..." : "Drag 'n' drop a CSV file here, or click to select file"}</p><p className="text-xs text-gray-500">Required columns: risk_code, control_description, target, design, implementation, monitoring, effectiveness_evaluation</p></div>{fileName && <p className="text-sm font-medium">Previewing file: <span className="font-normal text-gray-700">{fileName}</span></p>}{parsedData.length > 0 && (<div className="space-y-4"><div className="overflow-auto rounded-xl border bg-white max-h-96"><table className="w-full text-sm"><thead className="bg-gray-100 sticky top-0"><tr>{["Risk Code", "Risk Title", "Control Description", "Target", "D", "I", "M", "E", "Errors"].map(h => <th key={h} className="px-3 py-2 text-left font-semibold text-gray-700">{h}</th>)}</tr></thead><tbody>{parsedData.map((row, index) => (<tr key={index} className={`border-t ${row.errors && row.errors.length > 0 ? 'bg-red-50' : ''}`}><td className="px-3 py-2">{row.risk_code}</td><td className="px-3 py-2">{row.risk_title}</td><td className="px-3 py-2">{row.description}</td><td className="px-3 py-2">{row.target}</td><td className="px-3 py-2">{row.design}</td><td className="px-3 py-2">{row.implementation}</td><td className="px-3 py-2">{row.monitoring}</td><td className="px-3 py-2">{row.effectiveness_evaluation}</td><td className="px-3 py-2 text-red-600 text-xs">{row.errors?.join(', ')}</td></tr>))}</tbody></table></div><div className="flex justify-between items-center"><div className="text-sm text-gray-600 space-y-1">{invalidRowsCount > 0 ? <span className="text-red-600 font-semibold flex items-center"><AlertTriangle className="h-4 w-4 mr-2"/>{invalidRowsCount} row(s) have errors and will be skipped.</span> : <span className="text-green-600 font-semibold">All {parsedData.length} rows look good!</span>}</div><Button onClick={handleImport} disabled={validRows.length === 0}>Import {validRows.length > 0 ? validRows.length : ''} Valid Controls</Button></div></div>)}</CardContent></Card>);
-}
-
-function DeleteConfirmationDialog({ onConfirm, riskCode }: { onConfirm: () => void; riskCode: string; }) {
-    const [open, setOpen] = useState(false);
-    return ( <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button size="sm" variant="ghost"><Trash2 className="h-4 w-4 text-red-500" /></Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Are you absolutely sure?</DialogTitle><DialogDescription>This action cannot be undone. This will permanently delete the risk <span className="font-semibold">{riskCode}</span>.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button variant="destructive" onClick={() => { onConfirm(); setOpen(false); }}>Delete</Button></DialogFooter></DialogContent></Dialog> );
-}
-
-function processParsedRiskData(rawData: any[], matrixSize: 5 | 6) {
-    const discoveredDivisions = new Set<string>(); const discoveredDepartments = new Set<string>(); const discoveredCategories = new Set<string>();
-    const data = rawData.map((rowData: any) => {
-        const risk: ParsedRisk = { risk_title: rowData.risk_title?.trim() || '', risk_description: rowData.risk_description?.trim() || '', division: rowData.division?.trim() || '', department: rowData.department?.trim() || '', category: rowData.category?.trim() || '', owner: rowData.owner?.trim() || '', likelihood_inherent: parseInt(rowData.likelihood_inherent, 10), impact_inherent: parseInt(rowData.impact_inherent, 10), status: rowData.status?.trim() as any, controls: [], errors: [] };
-        if (!risk.risk_title) risk.errors?.push('Missing title');
-        if (isNaN(risk.likelihood_inherent) || risk.likelihood_inherent < 1 || risk.likelihood_inherent > matrixSize) risk.errors?.push(`Invalid L-Inherent (1-${matrixSize})`);
-        if (isNaN(risk.impact_inherent) || risk.impact_inherent < 1 || risk.impact_inherent > matrixSize) risk.errors?.push(`Invalid I-Inherent (1-${matrixSize})`);
-        if (!['Open', 'In Progress', 'Closed'].includes(risk.status)) risk.errors?.push('Invalid status');
-        if (risk.errors?.length === 0) { if (risk.division) discoveredDivisions.add(risk.division); if (risk.department) discoveredDepartments.add(risk.department); if (risk.category) discoveredCategories.add(risk.category); }
-        return risk;
-    });
-    return { data, discovered: { divisions: Array.from(discoveredDivisions), departments: Array.from(discoveredDepartments), categories: Array.from(discoveredCategories) } };
-}
-
-function processParsedControlsData(rawData: any[], allRisks: RiskRow[]): ParsedControl[] {
-    const risksMap = new Map(allRisks.map(r => [r.risk_code, r.risk_title]));
-    return rawData.map((rowData: any) => {
-        const risk_code = rowData.risk_code?.trim() || '';
-        const control: ParsedControl = {
-            risk_code,
-            risk_title: risksMap.get(risk_code) || 'Unknown Risk',
-            description: rowData.control_description?.trim() || '',
-            target: rowData.target?.trim() as any,
-            design: parseInt(rowData.design, 10),
-            implementation: parseInt(rowData.implementation, 10),
-            monitoring: parseInt(rowData.monitoring, 10),
-            effectiveness_evaluation: parseInt(rowData.effectiveness_evaluation, 10),
-            errors: []
-        };
-
-        if (!control.risk_code) control.errors?.push('Missing risk_code');
-        else if (!risksMap.has(control.risk_code)) control.errors?.push('Unknown risk_code');
-        if (!control.description) control.errors?.push('Missing control_description');
-        if (!['Likelihood', 'Impact'].includes(control.target)) control.errors?.push('Invalid target');
-        if (isNaN(control.design) || control.design < 0 || control.design > 3) control.errors?.push('Invalid design');
-        if (isNaN(control.implementation) || control.implementation < 0 || control.implementation > 3) control.errors?.push('Invalid impl.');
-        if (isNaN(control.monitoring) || control.monitoring < 0 || control.monitoring > 3) control.errors?.push('Invalid monitoring');
-        if (isNaN(control.effectiveness_evaluation) || control.effectiveness_evaluation < 0 || control.effectiveness_evaluation > 3) control.errors?.push('Invalid eval.');
-        return control;
-    });
-}
-
-
-function MultiSelectPopover({ title, options, selected, setSelected }: { title: string; options: readonly string[]; selected: string[]; setSelected: (selected: string[]) => void; }) { const handleSelect = (value: string) => { const newSelected = selected.includes(value) ? selected.filter(item => item !== value) : [...selected, value]; setSelected(newSelected); }; return (<Popover><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between">{selected.length > 0 ? `${title} (${selected.length})` : `All ${title}`}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[200px] p-0"><div className="p-2 space-y-1">{options.map(option => (<div key={option} className="flex items-center gap-2 p-1 rounded hover:bg-gray-100"><Checkbox id={`ms-${title}-${option}`} checked={selected.includes(option)} onCheckedChange={() => handleSelect(option)} /><Label htmlFor={`ms-${title}-${option}`} className="w-full text-sm font-normal">{option}</Label></div>))}</div></PopoverContent></Popover>); }
-function AddRiskDialog({ onAdd, config, rows }: { onAdd: (r: Omit<RiskRow, 'risk_code'>) => void; config: AppConfig; rows: RiskRow[] }) { const [open, setOpen] = useState(false); const [form, setForm] = useState<Omit<RiskRow, 'risk_code'>>({ risk_title: "", risk_description: "", division: config.divisions[0] || "", department: config.departments[0] || "", category: config.categories[0] || "", owner: "", likelihood_inherent: 3, impact_inherent: 3, controls: [], status: "Open" }); const preview = useMemo(() => nextRiskCode(rows, form.division, form.category), [rows, form.division, form.category]); const handleSave = () => { onAdd(form); setOpen(false); setForm({ risk_title: "", risk_description: "", division: config.divisions[0] || "", department: config.departments[0] || "", category: config.categories[0] || "", owner: "", likelihood_inherent: 3, impact_inherent: 3, controls: [], status: "Open" });}; return (<Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" />Add Risk</Button></DialogTrigger><DialogContent className="max-w-3xl max-h-[90vh] flex flex-col"><DialogHeader><DialogTitle>Add a Risk</DialogTitle></DialogHeader><RiskFields form={form} setForm={setForm} config={config} codePreview={preview} codeLocked /><DialogFooter className="pt-4"><Button onClick={handleSave}>Save</Button></DialogFooter></DialogContent></Dialog>); }
-function EditRiskDialog({ initial, config, onSave, children }: { initial: ProcessedRisk; config: AppConfig; onSave: (p: Omit<RiskRow, 'risk_code'>) => void; children: React.ReactNode }) { const [open, setOpen] = useState(false); const [form, setForm] = useState<Omit<RiskRow, 'risk_code'>>({ ...initial }); useEffect(() => { setForm({ ...initial }) }, [initial, open]); const handleSave = () => { onSave(form); setOpen(false); }; return (<Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild>{children}</DialogTrigger><DialogContent className="max-w-3xl max-h-[90vh] flex flex-col"><DialogHeader><DialogTitle>Edit {initial.risk_code}</DialogTitle></DialogHeader><RiskFields form={form} setForm={setForm} config={config} codePreview={initial.risk_code} codeLocked /><DialogFooter className="pt-4"><Button onClick={handleSave}>Save</Button></DialogFooter></DialogContent></Dialog>); }
-function RiskFields({ form, setForm, config, codePreview, codeLocked }: { form: Omit<RiskRow, 'risk_code'>; setForm: React.Dispatch<React.SetStateAction<Omit<RiskRow, "risk_code">>>; config: AppConfig; codePreview: string; codeLocked?: boolean }) { 
-    const [isSuggesting, setIsSuggesting] = useState(false);
-    const setField = <K extends keyof Omit<RiskRow, 'risk_code'>>(k: K, v: Omit<RiskRow, 'risk_code'>[K]) => setForm(p => ({ ...p, [k]: v })); 
-    const addControl = () => setForm(p => ({ ...p, controls: [...p.controls, { id: crypto.randomUUID(), description: "", target: "Likelihood", design: 0, implementation: 0, monitoring: 0, effectiveness_evaluation: 0 }] })); 
-    const updateControl = (id: string, updatedControl: Partial<Control>) => setForm(p => ({ ...p, controls: p.controls.map(c => c.id === id ? { ...c, ...updatedControl } : c) })); 
-    const removeControl = (id: string) => setForm(p => ({ ...p, controls: p.controls.filter(c => c.id !== id) })); 
-    const residualRisk = calculateResidualRisk(form as RiskRow); 
-    
-    const handleSuggestControls = async () => {
-        if (!form.risk_title || !form.risk_description) {
-            alert("Please enter a title and description for the risk first.");
-            return;
-        }
-        setIsSuggesting(true);
-        try {
-            const prompt = `Based on the risk titled "${form.risk_title}" with the description "${form.risk_description}", suggest 3 relevant control measures. For each, provide a brief description and specify if it primarily targets 'Likelihood' or 'Impact'.`;
-            const schema = {
-              type: "ARRAY",
-              items: {
-                type: "OBJECT",
-                properties: {
-                  description: { type: "STRING" },
-                  target: { type: "STRING", enum: ["Likelihood", "Impact"] },
-                },
-                required: ["description", "target"],
-              },
-            };
-            const suggestions = await callGeminiAPI(prompt, schema) as {description: string, target: "Likelihood" | "Impact"}[];
-
-            if (suggestions && suggestions.length > 0) {
-                 setForm(p => ({
-                    ...p,
-                    controls: [
-                        ...p.controls,
-                        ...suggestions.map(s => ({
-                            id: crypto.randomUUID(),
-                            description: s.description,
-                            target: s.target,
-                            design: 2, // Default to a reasonable value
-                            implementation: 2,
-                            monitoring: 2,
-                            effectiveness_evaluation: 2,
-                        }))
-                    ]
-                }));
-            } else {
-                 alert("The AI could not suggest any controls for this risk.");
-            }
-        } catch (error) {
-            console.error("Failed to get AI suggestions:", error);
-            alert("An error occurred while getting AI suggestions. Please try again.");
-        } finally {
-            setIsSuggesting(false);
-        }
-    };
-
-    return (<div className="flex-grow overflow-y-auto -mr-4 pr-4 space-y-6"><div className="grid grid-cols-2 gap-4"><div><Label>Risk Code</Label><Input value={codePreview} readOnly={!!codeLocked} className={codeLocked ? "bg-gray-100" : ""} /></div><div><Label>Status</Label><Select value={form.status} onValueChange={v => setField('status', v as any)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Open", "In Progress", "Closed"].map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent></Select></div><div className="col-span-2"><Label>Title</Label><Input value={form.risk_title} onChange={e => setField('risk_title', e.target.value)} /></div><div className="col-span-2"><Label>Description</Label><Textarea rows={3} value={form.risk_description} onChange={e => setField('risk_description', e.target.value)} /></div><div><Label>Division</Label><Select value={form.division} onValueChange={v => setField('division', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{config.divisions.map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent></Select></div><div><Label>Department</Label><Select value={form.department} onValueChange={v => setField('department', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{config.departments.map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent></Select></div><div><Label>Category</Label><Select value={form.category} onValueChange={v => setField('category', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{config.categories.map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent></Select></div><div><Label>Owner</Label><Input value={form.owner} onChange={e => setField('owner', e.target.value)} /></div></div><div className="space-y-2"><h3 className="font-semibold text-gray-800">Inherent Risk</h3><div className="grid grid-cols-2 gap-4"><div><Label>Likelihood (Inherent)</Label><Select value={String(form.likelihood_inherent)} onValueChange={v => setField('likelihood_inherent', Number(v))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{config.likelihoodLabels.map((label, index) => <SelectItem key={index + 1} value={String(index + 1)}>{label}</SelectItem>)}</SelectContent></Select></div><div><Label>Impact (Inherent)</Label><Select value={String(form.impact_inherent)} onValueChange={v => setField('impact_inherent', Number(v))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{config.impactLabels.map((label, index) => <SelectItem key={index + 1} value={String(index + 1)}>{label}</SelectItem>)}</SelectContent></Select></div></div></div><div className="space-y-3"><div className="flex justify-between items-center"><h3 className="font-semibold text-gray-800">Controls</h3><div className="flex gap-2"><Button onClick={handleSuggestControls} size="sm" variant="outline" disabled={isSuggesting}><Sparkles className="mr-2 h-4 w-4"/>{isSuggesting ? 'Thinking...' : 'Suggest Controls'}</Button><Button onClick={addControl} size="sm" variant="outline"><Plus className="mr-2 h-4 w-4" />Add Control</Button></div></div>{form.controls.map((control, index) => (<div key={control.id} className="border rounded-lg p-4 space-y-4 bg-gray-50"><div className="flex justify-between items-start"><div className="flex-grow space-y-2"><Label>Control #{index + 1} Description</Label><Textarea placeholder="e.g., Daily reconciliation process" value={control.description} onChange={e => updateControl(control.id, { description: e.target.value })} /></div><Button variant="ghost" size="sm" className="ml-4" onClick={() => removeControl(control.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button></div><div><Label>Target</Label><Select value={control.target} onValueChange={(v: "Likelihood" | "Impact") => updateControl(control.id, { target: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Likelihood">Likelihood</SelectItem><SelectItem value="Impact">Impact</SelectItem></SelectContent></Select></div><div className="grid grid-cols-2 gap-4"><div><Label>D (Design)</Label><Select value={String(control.design)} onValueChange={v => updateControl(control.id, { design: Number(v) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{CONTROL_DESIGN_OPTIONS.map(o => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent></Select></div><div><Label>I (Implementation)</Label><Select value={String(control.implementation)} onValueChange={v => updateControl(control.id, { implementation: Number(v) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{CONTROL_IMPLEMENTATION_OPTIONS.map(o => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent></Select></div><div><Label>M (Monitoring)</Label><Select value={String(control.monitoring)} onValueChange={v => updateControl(control.id, { monitoring: Number(v) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{CONTROL_MONITORING_OPTIONS.map(o => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent></Select></div><div><Label>E (Evaluation)</Label><Select value={String(control.effectiveness_evaluation)} onValueChange={v => updateControl(control.id, { effectiveness_evaluation: Number(v) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{CONTROL_EFFECTIVENESS_OPTIONS.map(o => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent></Select></div></div></div>))}{form.controls.length === 0 && <p className="text-sm text-center text-gray-500 py-4">No controls added. Residual risk will equal inherent risk.</p>}</div><div className="space-y-2"><h3 className="font-semibold text-gray-800">Residual Risk (Calculated)</h3><div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-blue-50"><div><Label>Likelihood (Residual)</Label><Input readOnly value={`${residualRisk.likelihood.toFixed(2)} (${config.likelihoodLabels[Math.round(residualRisk.likelihood)-1] || 'N/A'})`} className="bg-white font-mono" /></div><div><Label>Impact (Residual)</Label><Input readOnly value={`${residualRisk.impact.toFixed(2)} (${config.impactLabels[Math.round(residualRisk.impact)-1] || 'N/A'})`} className="bg-white font-mono" /></div></div></div></div>); 
-}
-
-function ConfigDialog({ config, onSave }: { config: AppConfig; onSave: (c: AppConfig) => void }) {
-    const [draft, setDraft] = useState<AppConfig>(config);
-    useEffect(() => { setDraft(config); }, [config]);
-
-    const handleSizeChange = (size: '5' | '6') => {
-        const newSize = parseInt(size, 10) as 5 | 6;
-        setDraft(prev => {
-            const newLikelihoodLabels = Array.from({ length: newSize }, (_, i) => prev.likelihoodLabels[i] || `Likelihood ${i + 1}`);
-            const newImpactLabels = Array.from({ length: newSize }, (_, i) => prev.impactLabels[i] || `Impact ${i + 1}`);
-            return { ...prev, matrixSize: newSize, likelihoodLabels: newLikelihoodLabels, impactLabels: newImpactLabels };
-        });
-    };
-
-    const handleLabelChange = (type: 'likelihood' | 'impact', index: number, value: string) => {
-        setDraft(prev => {
-            const newLabels = type === 'likelihood' ? [...prev.likelihoodLabels] : [...prev.impactLabels];
-            newLabels[index] = value;
-            return type === 'likelihood' ? { ...prev, likelihoodLabels: newLabels } : { ...prev, impactLabels: newLabels };
-        });
-    };
-
-    const handleListChange = (type: 'divisions' | 'departments' | 'categories', value: string) => {
-        setDraft(p => ({ ...p, [type]: value.split(',').map(s => s.trim()) }));
-    };
-    
-    const apply = () => {
-        onSave({
-            ...draft,
-            divisions: draft.divisions.filter(Boolean),
-            departments: draft.departments.filter(Boolean),
-            categories: draft.categories.filter(Boolean),
-        });
-    };
-
-    return (<Dialog><DialogTrigger asChild><Button variant="outline"><Settings className="mr-2 h-4 w-4" />Configure</Button></DialogTrigger><DialogContent className="max-w-4xl max-h-[90vh] flex flex-col"><DialogHeader><DialogTitle>Configuration</DialogTitle></DialogHeader>
-        <div className="flex-grow overflow-y-auto -mr-4 pr-4 space-y-6">
-            <div className="space-y-2">
-                <Label className="font-semibold">Risk Matrix Setup</Label>
-                <RadioGroup value={String(draft.matrixSize)} onValueChange={handleSizeChange} className="flex items-center gap-4">
-                    <div className="flex items-center space-x-2"><RadioGroupItem value="5" id="r1" /><Label htmlFor="r1">5x5 Matrix</Label></div>
-                    <div className="flex items-center space-x-2"><RadioGroupItem value="6" id="r2" /><Label htmlFor="r2">6x6 Matrix</Label></div>
-                </RadioGroup>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                    <Label>Likelihood Labels</Label>
-                    {draft.likelihoodLabels.map((label, index) => <Input key={index} value={label} onChange={e => handleLabelChange('likelihood', index, e.target.value)} placeholder={`Level ${index + 1}`} />)}
-                </div>
-                <div className="space-y-2">
-                    <Label>Impact Labels</Label>
-                    {draft.impactLabels.map((label, index) => <Input key={index} value={label} onChange={e => handleLabelChange('impact', index, e.target.value)} placeholder={`Level ${index + 1}`} />)}
-                </div>
-            </div>
-             <div className="space-y-2">
-                 <Label className="font-semibold">Prepopulated Lists</Label>
-                <div className="grid grid-cols-2 gap-6">
-                    <div><Label>Divisions (comma-separated)</Label><Textarea rows={4} value={draft.divisions.join(', ')} onChange={e => handleListChange('divisions', e.target.value)} /></div>
-                    <div><Label>Departments (comma-separated)</Label><Textarea rows={4} value={draft.departments.join(', ')} onChange={e => handleListChange('departments', e.target.value)} /></div>
-                    <div className="col-span-2"><Label>Categories (comma-separated)</Label><Textarea rows={3} value={draft.categories.join(', ')} onChange={e => handleListChange('categories', e.target.value)} /></div>
-                </div>
-            </div>
-        </div>
-        <DialogFooter className="pt-4"><Button onClick={apply}>Save Configuration</Button></DialogFooter>
-    </DialogContent></Dialog>);
-}
-
 function AIAssistantTab({ onAddMultipleRisks, config, onSwitchTab }: { onAddMultipleRisks: (risks: Omit<RiskRow, 'risk_code'>[]) => void; config: AppConfig; onSwitchTab: (tab: string) => void; }) {
     const [prompt, setPrompt] = useState("");
-    const [isLoading, setIsLoading] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [suggestions, setSuggestions] = useState<AISuggestedRisk[]>([]);
-    const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
-    const [suggestionData, setSuggestionData] = useState<{ [key: number]: { category: string; division: string; } }>({});
     const [error, setError] = useState<string | null>(null);
 
-     const isAddButtonDisabled = useMemo(() => {
-        if (selectedSuggestions.size === 0) return true;
-        for (const index of selectedSuggestions) {
-            if (!suggestionData[index] || !suggestionData[index].category || !suggestionData[index].division) {
-                return true;
-            }
-        }
-        return false;
-    }, [selectedSuggestions, suggestionData]);
-
-    const handleGenerateRisks = async () => {
-        if (!prompt.trim()) {
-            setError("Please enter a description of the project or process.");
-            return;
-        }
-        setIsLoading(true);
+    const suggestRisks = useCallback(async () => {
+        if (!prompt.trim()) return;
+        setLoading(true);
         setError(null);
-        setSuggestions([]);
-        setSelectedSuggestions(new Set());
-        setSuggestionData({});
-
         try {
-            const apiPrompt = `Based on the following description of a project/process: "${prompt}". Identify potential risks. For each risk, provide a concise title and a brief one-sentence description.`;
-            const schema = {
-                type: "ARRAY",
-                items: {
-                    type: "OBJECT",
-                    properties: {
-                        risk_title: { type: "STRING" },
-                        risk_description: { type: "STRING" },
-                    },
-                    required: ["risk_title", "risk_description"]
-                }
-            };
-            const result = await callGeminiAPI(apiPrompt, schema) as AISuggestedRisk[];
-            if (result && result.length > 0) {
-                setSuggestions(result);
-            } else {
-                setError("The AI could not identify any risks for the given description.");
-            }
-        } catch (err) {
-            console.error(err);
-            setError("An error occurred while communicating with the AI. Please try again.");
+            const systemPrompt = `You are an AI assistant for a risk management application. A user wants to identify potential risks. Based on the following prompt, generate a list of 1-3 distinct, relevant risks with a clear title and description. Respond only with a JSON array of objects, where each object has a 'risk_title' and 'risk_description' field. Do not include any other text or formatting outside the JSON array. The risks should be relevant to a financial services context.
+            User prompt: "${prompt}"`;
+            
+            const schema = { type: "array", items: { type: "object", properties: { risk_title: { type: "string" }, risk_description: { type: "string" } }, required: ["risk_title", "risk_description"] } };
+            
+            const response: AISuggestedRisk[] = await callGeminiAPI(systemPrompt, schema);
+            setSuggestions(response);
+            
+        } catch (err: any) {
+            setError(err.message || "Failed to get suggestions. Please check your API key and network connection.");
         } finally {
-            setIsLoading(false);
+            setLoading(false);
         }
+    }, [prompt]);
+
+    const handleAdd = (suggestion: AISuggestedRisk) => {
+        onAddMultipleRisks([{ ...suggestion, division: "Clearing", department: "Risk Management", category: "Operational", owner: "Undetermined", likelihood_inherent: 3, impact_inherent: 3, controls: [], status: "Open" }]);
+        onSwitchTab("register");
     };
 
-    const handleSelectionChange = (index: number, checked: boolean) => {
-        setSelectedSuggestions(prev => {
-            const newSet = new Set(prev);
-            if (checked) {
-                newSet.add(index);
-            } else {
-                newSet.delete(index);
-            }
-            return newSet;
-        });
-    };
-
-    const handleSuggestionDataChange = (index: number, field: 'category' | 'division', value: string) => {
-        setSuggestionData(prev => ({
-            ...prev,
-            [index]: {
-                ...prev[index],
-                [field]: value,
-            }
-        }));
-    };
-    
-    const handleAddSelectedRisks = () => {
-        const risksToAdd = Array.from(selectedSuggestions).map(index => {
-            const suggestion = suggestions[index];
-            const data = suggestionData[index]!; // Disabled button ensures this exists
-            return {
-                ...suggestion,
-                category: data.category,
-                division: data.division,
-                department: config.departments[0] || "",
-                owner: "Unassigned",
-                likelihood_inherent: 3,
-                impact_inherent: 3,
-                controls: [],
-                status: "Open" as "Open"
-            };
-        });
-
-        if (risksToAdd.length > 0) {
-            onAddMultipleRisks(risksToAdd);
-            alert(`Added ${risksToAdd.length} risk(s) to the register.`);
-            setSuggestions([]);
-            setSelectedSuggestions(new Set());
-            setSuggestionData({});
-            onSwitchTab("register");
-        }
+    const isApiConfigured = () => {
+        const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+        return !!apiKey;
     };
 
     return (
         <Card className="rounded-2xl shadow-sm">
             <CardHeader>
-                <CardTitle className="flex items-center">
-                    <Sparkles className="mr-2 h-5 w-5 text-purple-500" />
-                    AI Assistant: Proactive Risk Identification
-                </CardTitle>
+                <CardTitle className="flex items-center gap-2"><Sparkles className="h-6 w-6 text-yellow-500" />AI Assistant</CardTitle>
+                <CardDescription>Generate new risk ideas using Google's Gemini AI.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-                <div>
-                    <Label htmlFor="ai-prompt">Describe a new project, process, or business area:</Label>
-                    <Textarea
-                        id="ai-prompt"
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="e.g., 'We are planning to launch a new mobile banking application for retail customers...'"
-                        rows={5}
-                        className="mt-1"
-                    />
+            <CardContent className="p-4">
+                {!isApiConfigured() && (
+                    <div className="p-4 mb-4 rounded-lg bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 flex items-center">
+                        <AlertTriangle className="mr-3 h-5 w-5" />
+                        <p>The Gemini API key is not configured. Please set the **`GEMINI_API_KEY`** environment variable to enable this feature.</p>
+                    </div>
+                )}
+                <div className="flex gap-2">
+                    <Input placeholder="Describe a potential business scenario to identify risks..." value={prompt} onChange={e => setPrompt(e.target.value)} disabled={loading || !isApiConfigured()} />
+                    <Button onClick={suggestRisks} disabled={loading || !isApiConfigured()}>{loading ? "Thinking..." : "Suggest Risks"}</Button>
                 </div>
-                <div className="flex justify-end">
-                    <Button onClick={handleGenerateRisks} disabled={isLoading}>
-                        {isLoading ? "Analyzing..." : "Identify Risks"}
-                    </Button>
-                </div>
-                {error && <p className="text-red-600 text-sm">{error}</p>}
+                {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
                 {suggestions.length > 0 && (
-                    <div className="space-y-3">
-                        <h3 className="font-semibold">Suggested Risks:</h3>
-                        {suggestions.map((risk, index) => (
-                            <Card key={index} className="bg-gray-50">
-                                <CardContent className="p-4 flex flex-col gap-4">
-                                     <div className="flex items-start gap-4 flex-grow">
-                                        <Checkbox 
-                                            id={`suggestion-${index}`} 
-                                            className="mt-1"
-                                            onCheckedChange={(checked) => handleSelectionChange(index, !!checked)}
-                                        />
-                                        <div className="flex-grow">
-                                            <Label htmlFor={`suggestion-${index}`} className="font-bold">{risk.risk_title}</Label>
-                                            <p className="text-sm text-gray-600">{risk.risk_description}</p>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4 pl-8">
-                                        <div className="flex items-center gap-2">
-                                            <Label className="w-20">Division</Label>
-                                            <Select 
-                                                value={suggestionData[index]?.division || ""}
-                                                onValueChange={(value) => handleSuggestionDataChange(index, 'division', value)}
-                                            >
-                                                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                                                <SelectContent>{config.divisions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Label className="w-20">Category</Label>
-                                            <Select 
-                                                value={suggestionData[index]?.category || ""}
-                                                onValueChange={(value) => handleSuggestionDataChange(index, 'category', value)}
-                                            >
-                                                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                                                <SelectContent>{config.categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                         <div className="flex justify-end pt-2">
-                            <Button onClick={handleAddSelectedRisks} disabled={isAddButtonDisabled}>
-                                Add {selectedSuggestions.size > 0 ? `${selectedSuggestions.size} ` : ''}Selected Risk(s) to Register
-                            </Button>
+                    <div className="mt-6">
+                        <h3 className="text-lg font-semibold mb-2">Suggested Risks:</h3>
+                        <div className="grid gap-4">
+                            {suggestions.map((s, i) => (
+                                <Card key={i} className="p-4 bg-gray-50 border-none">
+                                    <h4 className="font-semibold text-base">{s.risk_title}</h4>
+                                    <p className="text-sm text-gray-700">{s.risk_description}</p>
+                                    <Button size="sm" className="mt-2" onClick={() => handleAdd(s)}>Add to Register</Button>
+                                </Card>
+                            ))}
                         </div>
                     </div>
                 )}
@@ -915,3 +584,124 @@ function AIAssistantTab({ onAddMultipleRisks, config, onSwitchTab }: { onAddMult
     );
 }
 
+function RiskImportTab({ onImport, currentConfig }: { onImport: (risks: ParsedRisk[], discoveredConfig: DiscoveredConfig) => void; currentConfig: AppConfig; }) {
+    const [file, setFile] = useState<File | null>(null);
+    const [parsingError, setParsingError] = useState<string | null>(null);
+    const onDrop = useCallback((acceptedFiles: File[]) => { setFile(acceptedFiles[0]); setParsingError(null); }, []);
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] } });
+
+    const handleParse = () => {
+        if (!file) { setParsingError("Please select a CSV file to import."); return; }
+        setParsingError(null);
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            dynamicTyping: true,
+            transformHeader: (header: string) => header.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_$/, ''),
+            complete: (results: { data: ParsedRisk[]; errors: any[]; meta: any; }) => {
+                if (results.errors.length > 0) {
+                    setParsingError("CSV parsing errors detected. Please check your file format. First error: " + results.errors[0].message);
+                    return;
+                }
+                const discoveredConfig = { divisions: new Set<string>(), departments: new Set<string>(), categories: new Set<string>() };
+                const validRisks = results.data.filter(d => {
+                    const isValid = d.risk_title && d.risk_description && d.division && d.department && d.category && d.owner && d.likelihood_inherent && d.impact_inherent;
+                    if (isValid) {
+                        discoveredConfig.divisions.add(d.division);
+                        discoveredConfig.departments.add(d.department);
+                        discoveredConfig.categories.add(d.category);
+                    }
+                    return isValid;
+                });
+                if (validRisks.length === 0) {
+                    setParsingError("No valid risk rows found. Please check column headers and data format.");
+                    return;
+                }
+                onImport(validRisks, { divisions: Array.from(discoveredConfig.divisions), departments: Array.from(discoveredConfig.departments), categories: Array.from(discoveredConfig.categories) });
+                setFile(null);
+            }
+        });
+    };
+
+    return (<Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Risk Import</CardTitle><CardDescription>Import risks from a CSV file. Columns must match the required format.</CardDescription></CardHeader><CardContent className="p-4"><div {...getRootProps()} className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer ${isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300 bg-gray-50"}`}><input {...getInputProps()}/><FileUp className="mx-auto h-8 w-8 text-gray-400 mb-2"/><p className="text-sm text-gray-500">{isDragActive ? "Drop the file here..." : "Drag 'n' drop a CSV file here, or click to select one"}</p>{file && <p className="mt-2 text-sm text-green-600">Selected file: {file.name}</p>}</div>{parsingError && <p className="text-red-500 text-sm mt-2">{parsingError}</p>}<Button onClick={handleParse} disabled={!file} className="mt-4"><Upload className="mr-2 h-4 w-4"/>Import Risks</Button><p className="text-sm text-gray-500 mt-4">Required columns: `risk_title`, `risk_description`, `division`, `department`, `category`, `owner`, `likelihood_inherent`, `impact_inherent`.</p></CardContent></Card>);
+}
+
+function ControlImportTab({ onImport, allRisks }: { onImport: (controls: ParsedControl[]) => void; allRisks: RiskRow[]; }) {
+    const [file, setFile] = useState<File | null>(null);
+    const [parsingError, setParsingError] = useState<string | null>(null);
+    const onDrop = useCallback((acceptedFiles: File[]) => { setFile(acceptedFiles[0]); setParsingError(null); }, []);
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] } });
+
+    const handleParse = () => {
+        if (!file) { setParsingError("Please select a CSV file to import."); return; }
+        setParsingError(null);
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            dynamicTyping: true,
+            transformHeader: (header: string) => header.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_$/, ''),
+            complete: (results: { data: ParsedControl[]; errors: any[]; meta: any; }) => {
+                if (results.errors.length > 0) {
+                    setParsingError("CSV parsing errors detected. Please check your file format. First error: " + results.errors[0].message);
+                    return;
+                }
+                const validControls = results.data.filter(d => d.risk_code && d.description);
+                if (validControls.length === 0) {
+                    setParsingError("No valid control rows found. Please check column headers and data format.");
+                    return;
+                }
+                onImport(validControls);
+                setFile(null);
+            }
+        });
+    };
+
+    return (<Card className="rounded-2xl shadow-sm"><CardHeader><CardTitle>Control Import</CardTitle><CardDescription>Import controls from a CSV file. They will be linked to existing risks by `risk_code`.</CardDescription></CardHeader><CardContent className="p-4"><div {...getRootProps()} className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer ${isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300 bg-gray-50"}`}><input {...getInputProps()}/><FileUp className="mx-auto h-8 w-8 text-gray-400 mb-2"/><p className="text-sm text-gray-500">{isDragActive ? "Drop the file here..." : "Drag 'n' drop a CSV file here, or click to select one"}</p>{file && <p className="mt-2 text-sm text-green-600">Selected file: {file.name}</p>}</div>{parsingError && <p className="text-red-500 text-sm mt-2">{parsingError}</p>}<Button onClick={handleParse} disabled={!file} className="mt-4"><Upload className="mr-2 h-4 w-4"/>Import Controls</Button><p className="text-sm text-gray-500 mt-4">Required columns: `risk_code`, `description`, `target`, `design`, `implementation`, `monitoring`, `effectiveness_evaluation`.</p></CardContent></Card>);
+}
+
+function AddRiskDialog({ onAdd, config, rows }: { onAdd: (r: Omit<RiskRow, 'risk_code'>) => void; config: AppConfig; rows: RiskRow[]; }) {
+    const [open, setOpen] = useState(false);
+    const [newRisk, setNewRisk] = useState<Omit<RiskRow, 'risk_code'>>({ risk_title: "", risk_description: "", division: "", department: "", category: "", owner: "", likelihood_inherent: 3, impact_inherent: 3, controls: [], status: "Open" });
+    const canSave = newRisk.risk_title && newRisk.risk_description && newRisk.division && newRisk.department && newRisk.category && newRisk.owner;
+    
+    const handleSave = () => { onAdd(newRisk); setNewRisk({ risk_title: "", risk_description: "", division: "", department: "", category: "", owner: "", likelihood_inherent: 3, impact_inherent: 3, controls: [], status: "Open" }); setOpen(false); };
+    
+    return (<Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4"/>Add Risk</Button></DialogTrigger><DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Add New Risk</DialogTitle></DialogHeader><div className="grid gap-4 py-4"><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="title" className="text-right">Title</Label><Input id="title" value={newRisk.risk_title} onChange={e => setNewRisk({...newRisk, risk_title: e.target.value})} className="col-span-3"/></div><div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="description" className="text-right">Description</Label><Textarea id="description" value={newRisk.risk_description} onChange={e => setNewRisk({...newRisk, risk_description: e.target.value})} className="col-span-3"/></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="division" className="text-right">Division</Label><Select onValueChange={v => setNewRisk({...newRisk, division: v})} value={newRisk.division}><SelectTrigger className="col-span-3"><SelectValue placeholder="Select a division"/></SelectTrigger><SelectContent>{config.divisions.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="department" className="text-right">Department</Label><Select onValueChange={v => setNewRisk({...newRisk, department: v})} value={newRisk.department}><SelectTrigger className="col-span-3"><SelectValue placeholder="Select a department"/></SelectTrigger><SelectContent>{config.departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="category" className="text-right">Category</Label><Select onValueChange={v => setNewRisk({...newRisk, category: v})} value={newRisk.category}><SelectTrigger className="col-span-3"><SelectValue placeholder="Select a category"/></SelectTrigger><SelectContent>{config.categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="owner" className="text-right">Owner</Label><Input id="owner" value={newRisk.owner} onChange={e => setNewRisk({...newRisk, owner: e.target.value})} className="col-span-3"/></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="inherent" className="text-right">Inherent Risk (LxI)</Label><div className="col-span-3 flex items-center gap-4"><Select onValueChange={v => setNewRisk({...newRisk, likelihood_inherent: Number(v)})} value={String(newRisk.likelihood_inherent)}><SelectTrigger className="w-[120px]"><SelectValue placeholder="Likelihood"/></SelectTrigger><SelectContent>{Array.from({length: config.matrixSize}, (_,i) => i+1).map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent></Select>x<Select onValueChange={v => setNewRisk({...newRisk, impact_inherent: Number(v)})} value={String(newRisk.impact_inherent)}><SelectTrigger className="w-[120px]"><SelectValue placeholder="Impact"/></SelectTrigger><SelectContent>{Array.from({length: config.matrixSize}, (_,i) => i+1).map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent></Select></div></div></div><DialogFooter><Button type="button" onClick={handleSave} disabled={!canSave}>Save Risk</Button></DialogFooter></DialogContent></Dialog>);
+}
+
+function EditRiskDialog({ initial, onSave, config, children }: { initial: RiskRow; onSave: (p: Omit<RiskRow, 'risk_code'>) => void; config: AppConfig; children: React.ReactNode; }) {
+    const [open, setOpen] = useState(false);
+    const [editedRisk, setEditedRisk] = useState(initial);
+    const canSave = editedRisk.risk_title && editedRisk.risk_description && editedRisk.division && editedRisk.department && editedRisk.category && editedRisk.owner;
+    
+    useEffect(() => { setEditedRisk(initial); }, [initial]);
+    
+    const handleSave = () => { onSave(editedRisk); setOpen(false); };
+    
+    const addControl = () => { setEditedRisk(r => ({ ...r, controls: [...r.controls, { id: crypto.randomUUID(), description: "", target: "Likelihood", design: 0, implementation: 0, monitoring: 0, effectiveness_evaluation: 0 }] })); };
+    const updateControl = (id: string, updates: Partial<Control>) => { setEditedRisk(r => ({ ...r, controls: r.controls.map(c => c.id === id ? { ...c, ...updates } : c) })); };
+    const removeControl = (id: string) => { setEditedRisk(r => ({ ...r, controls: r.controls.filter(c => c.id !== id) })); };
+    
+    return (<Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild>{children}</DialogTrigger><DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Edit Risk: {initial.risk_code}</DialogTitle></DialogHeader><div className="grid gap-4 py-4"><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="title" className="text-right">Title</Label><Input id="title" value={editedRisk.risk_title} onChange={e => setEditedRisk({...editedRisk, risk_title: e.target.value})} className="col-span-3"/></div><div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="description" className="text-right">Description</Label><Textarea id="description" value={editedRisk.risk_description} onChange={e => setEditedRisk({...editedRisk, risk_description: e.target.value})} className="col-span-3"/></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="division" className="text-right">Division</Label><Select onValueChange={v => setEditedRisk({...editedRisk, division: v})} value={editedRisk.division}><SelectTrigger className="col-span-3"><SelectValue placeholder="Select a division"/></SelectTrigger><SelectContent>{config.divisions.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="department" className="text-right">Department</Label><Select onValueChange={v => setEditedRisk({...editedRisk, department: v})} value={editedRisk.department}><SelectTrigger className="col-span-3"><SelectValue placeholder="Select a department"/></SelectTrigger><SelectContent>{config.departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="category" className="text-right">Category</Label><Select onValueChange={v => setEditedRisk({...editedRisk, category: v})} value={editedRisk.category}><SelectTrigger className="col-span-3"><SelectValue placeholder="Select a category"/></SelectTrigger><SelectContent>{config.categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="owner" className="text-right">Owner</Label><Input id="owner" value={editedRisk.owner} onChange={e => setEditedRisk({...editedRisk, owner: e.target.value})} className="col-span-3"/></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="status" className="text-right">Status</Label><Select onValueChange={v => setEditedRisk({...editedRisk, status: v as any})} value={editedRisk.status}><SelectTrigger className="col-span-3"><SelectValue placeholder="Select status"/></SelectTrigger><SelectContent>{["Open", "In Progress", "Closed"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="inherent" className="text-right">Inherent Risk</Label><div className="col-span-3 flex items-center gap-4"><Select onValueChange={v => setEditedRisk({...editedRisk, likelihood_inherent: Number(v)})} value={String(editedRisk.likelihood_inherent)}><SelectTrigger className="w-[120px]"><SelectValue placeholder="Likelihood"/></SelectTrigger><SelectContent>{Array.from({length: config.matrixSize}, (_,i) => i+1).map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent></Select>x<Select onValueChange={v => setEditedRisk({...editedRisk, impact_inherent: Number(v)})} value={String(editedRisk.impact_inherent)}><SelectTrigger className="w-[120px]"><SelectValue placeholder="Impact"/></SelectTrigger><SelectContent>{Array.from({length: config.matrixSize}, (_,i) => i+1).map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent></Select></div></div></div><h3 className="text-lg font-semibold">Controls ({editedRisk.controls.length})</h3><div className="grid gap-4">{editedRisk.controls.map((c, i) => (<Card key={c.id} className="p-4"><div className="flex items-center justify-between mb-2"><Label>Control #{i+1}</Label><Button variant="ghost" size="icon" onClick={() => removeControl(c.id)}><Trash2 className="h-4 w-4"/></Button></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor={`c-desc-${c.id}`} className="text-right">Description</Label><Input id={`c-desc-${c.id}`} value={c.description} onChange={e => updateControl(c.id, { description: e.target.value })} className="col-span-3"/></div><div className="grid grid-cols-4 items-center gap-4 mt-2"><Label htmlFor={`c-target-${c.id}`} className="text-right">Target</Label><RadioGroup id={`c-target-${c.id}`} value={c.target} onValueChange={v => updateControl(c.id, { target: v as "Likelihood" | "Impact" })} className="col-span-3 flex"><RadioGroupItem value="Likelihood" id={`l-${c.id}`} /><Label htmlFor={`l-${c.id}`}>Likelihood</Label><RadioGroupItem value="Impact" id={`i-${c.id}`} /><Label htmlFor={`i-${c.id}`}>Impact</Label></RadioGroup></div><div className="grid grid-cols-4 items-center gap-4 mt-2"><Label htmlFor={`c-des-${c.id}`} className="text-right">Design</Label><Select onValueChange={v => updateControl(c.id, { design: Number(v) })} value={String(c.design)}><SelectTrigger className="col-span-3"><SelectValue/></SelectTrigger><SelectContent>{CONTROL_DESIGN_OPTIONS.map(o => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4 mt-2"><Label htmlFor={`c-imp-${c.id}`} className="text-right">Implementation</Label><Select onValueChange={v => updateControl(c.id, { implementation: Number(v) })} value={String(c.implementation)}><SelectTrigger className="col-span-3"><SelectValue/></SelectTrigger><SelectContent>{CONTROL_IMPLEMENTATION_OPTIONS.map(o => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4 mt-2"><Label htmlFor={`c-mon-${c.id}`} className="text-right">Monitoring</Label><Select onValueChange={v => updateControl(c.id, { monitoring: Number(v) })} value={String(c.monitoring)}><SelectTrigger className="col-span-3"><SelectValue/></SelectTrigger><SelectContent>{CONTROL_MONITORING_OPTIONS.map(o => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4 mt-2"><Label htmlFor={`c-eff-${c.id}`} className="text-right">Effectiveness Evaluation</Label><Select onValueChange={v => updateControl(c.id, { effectiveness_evaluation: Number(v) })} value={String(c.effectiveness_evaluation)}><SelectTrigger className="col-span-3"><SelectValue/></SelectTrigger><SelectContent>{CONTROL_EFFECTIVENESS_OPTIONS.map(o => <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>)}</SelectContent></Select></div></Card>))}</div><Button variant="outline" className="w-full mt-4" onClick={addControl}><Plus className="mr-2 h-4 w-4"/>Add Control</Button><DialogFooter><Button type="button" onClick={handleSave} disabled={!canSave}>Save Changes</Button></DialogFooter></DialogContent></Dialog>);
+}
+
+function DeleteConfirmationDialog({ onConfirm, riskCode }: { onConfirm: () => void; riskCode: string; }) {
+    const [open, setOpen] = useState(false);
+    return (<Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button size="sm" variant="ghost"><Trash2 className="h-4 w-4 text-red-500"/></Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Are you absolutely sure?</DialogTitle><DialogDescription>This action cannot be undone. This will permanently delete the risk with code **{riskCode}** and all associated data from the register.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button variant="destructive" onClick={onConfirm}>Delete</Button></DialogFooter></DialogContent></Dialog>);
+}
+
+function ConfigDialog({ config, onSave }: { config: AppConfig; onSave: (c: AppConfig) => void; }) {
+    const [open, setOpen] = useState(false);
+    const [editedConfig, setEditedConfig] = useState(config);
+
+    useEffect(() => { setEditedConfig(config); }, [config]);
+
+    const handleSave = () => { onSave(editedConfig); setOpen(false); };
+
+    return (<Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="outline"><Settings className="mr-2 h-4 w-4" />Settings</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>App Settings</DialogTitle></DialogHeader><div className="grid gap-4 py-4"><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="matrixSize" className="text-right">Matrix Size</Label><Select onValueChange={v => setEditedConfig(c => ({ ...c, matrixSize: Number(v) as 5 | 6 }))} value={String(editedConfig.matrixSize)}><SelectTrigger className="col-span-3"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="5">5x5 (Default)</SelectItem><SelectItem value="6">6x6</SelectItem></SelectContent></Select></div><div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="divisions" className="text-right">Divisions</Label><Textarea id="divisions" value={editedConfig.divisions.join("\n")} onChange={e => setEditedConfig(c => ({ ...c, divisions: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) }))} className="col-span-3" placeholder="Enter one per line..."/></div><div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="departments" className="text-right">Departments</Label><Textarea id="departments" value={editedConfig.departments.join("\n")} onChange={e => setEditedConfig(c => ({ ...c, departments: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) }))} className="col-span-3" placeholder="Enter one per line..."/></div><div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="categories" className="text-right">Categories</Label><Textarea id="categories" value={editedConfig.categories.join("\n")} onChange={e => setEditedConfig(c => ({ ...c, categories: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) }))} className="col-span-3" placeholder="Enter one per line..."/></div></div><DialogFooter><Button onClick={handleSave}>Save</Button></DialogFooter></DialogContent></Dialog>);
+}
+
+function MultiSelectPopover({ title, options, selected, setSelected }: { title: string; options: string[]; selected: string[]; setSelected: (v: string[]) => void; }) {
+    return (<Popover><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between"><div className="truncate">{selected.length === 0 ? title : `${title} (${selected.length})`}</div><ChevronsUpDown className="ml-2 h-4 w-4 opacity-50"/></Button></PopoverTrigger><PopoverContent className="w-[300px] p-0"><div className="max-h-60 overflow-y-auto"><div className="p-2"><div className="flex items-center space-x-2"><Checkbox id="select-all" checked={selected.length === options.length} onCheckedChange={(checked) => setSelected(checked ? options : [])}/><Label htmlFor="select-all">Select All</Label></div></div><div className="p-2 border-t">{options.map(o => (<div key={o} className="flex items-center space-x-2 p-1"><Checkbox id={o} checked={selected.includes(o)} onCheckedChange={(checked) => { setSelected(checked ? [...selected, o] : selected.filter(s => s !== o)); }}/><Label htmlFor={o}>{o}</Label></div>))}</div></div></PopoverContent></Popover>);
+}
+This video provides a straightforward guide on how to get a free Gemini API key using the Google AI Studio interface.
