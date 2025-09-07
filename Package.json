@@ -1,0 +1,52 @@
+{
+  "name": "minrisk",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@/components/ui/card": "latest",
+    "@/components/ui/button": "latest",
+    "@/components/ui/input": "latest",
+    "@/components/ui/tabs": "latest",
+    "@/components/ui/select": "latest",
+    "@/components/ui/dialog": "latest",
+    "@/components/ui/label": "latest",
+    "@/components/ui/textarea": "latest",
+    "@/components/ui/checkbox": "latest",
+    "@/components/ui/popover": "latest",
+    "@/components/ui/radio-group": "latest",
+    "@radix-ui/react-checkbox": "latest",
+    "@radix-ui/react-dialog": "latest",
+    "@radix-ui/react-label": "latest",
+    "@radix-ui/react-popover": "latest",
+    "@radix-ui/react-radio-group": "latest",
+    "@radix-ui/react-select": "latest",
+    "@radix-ui/react-tabs": "latest",
+    "@radix-ui/react-slot": "latest",
+    "@radix-ui/react-icons": "latest",
+    "class-variance-authority": "latest",
+    "clsx": "latest",
+    "lucide-react": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-dropzone": "latest",
+    "recharts": "latest",
+    "tailwind-merge": "latest",
+    "tailwindcss-animate": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "autoprefixer": "latest",
+    "postcss": "latest",
+    "tailwindcss": "latest",
+    "typescript": "latest"
+  }
+}
