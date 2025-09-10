@@ -9,17 +9,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@/components/ui/card": "latest",
-    "@/components/ui/button": "latest",
-    "@/components/ui/input": "latest",
-    "@/components/ui/tabs": "latest",
-    "@/components/ui/select": "latest",
-    "@/components/ui/dialog": "latest",
-    "@/components/ui/label": "latest",
-    "@/components/ui/textarea": "latest",
-    "@/components/ui/checkbox": "latest",
-    "@/components/ui/popover": "latest",
-    "@/components/ui/radio-group": "latest",
     "@radix-ui/react-checkbox": "latest",
     "@radix-ui/react-dialog": "latest",
     "@radix-ui/react-label": "latest",
